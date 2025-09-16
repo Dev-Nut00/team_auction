@@ -1,0 +1,21 @@
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor/IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# Logs/cache
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.cache/
+
+# Build artifacts (none for this project, but kept for future)
+dist/
+build/
+out/
+
