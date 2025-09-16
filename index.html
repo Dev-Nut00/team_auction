@@ -3,194 +3,220 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>롤 팀 경매 시스템 (20인 / 4팀)</title>
+    <title>롤 팀 경매 시스템</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <header>
       <div class="title">
         <h1>롤 팀 경매 시스템</h1>
-        <div class="sub">20명, 4팀, 오프라인 진행</div>
+        <div class="sub">오프라인 진행</div>
       </div>
+
       <div class="header-controls">
-        <label for="uiScale">UI 크기</label>
-        <select id="uiScale">
-          <option value="small">작게</option>
-          <option value="normal" selected>보통</option>
-          <option value="large">크게</option>
-        </select>
+        <div class="timer-display-section">
+          <span id="timerDisplay" class="timer-main-display">00:30</span>
+          <div class="timer-quick-controls">
+            <button id="timerStart" class="timer-btn">시작</button>
+            <button id="timerStop" class="timer-btn">정지</button>
+          </div>
+        </div>
+
+        <div class="settings-dropdown">
+          <button id="settingsToggle" class="settings-btn" title="설정">⚙️</button>
+          <div id="settingsPanel" class="settings-panel hidden">
+            <div class="setting-section">
+              <div class="setting-group">
+                <label class="setting-item">
+                  <input type="checkbox" id="timerEnabled" checked />
+                  <span>타이머 사용</span>
+                </label>
+                <div class="timer-setting">
+                  <label for="timerSeconds">시간(초)</label>
+                  <input type="number" id="timerSeconds" value="30" min="5" max="300" />
+                </div>
+              </div>
+
+              <div class="setting-group">
+                <label class="setting-item">
+                  <input type="checkbox" id="soundEnabled" checked />
+                  <span>알림음</span>
+                </label>
+                <button id="soundTestBtn" class="test-btn">테스트</button>
+              </div>
+
+              <div class="setting-group">
+                <label for="soundVolume" class="volume-label">볼륨</label>
+                <div class="volume-control">
+                  <input type="range" id="soundVolume" min="0" max="100" value="70" />
+                  <span id="soundVolumeLabel">70%</span>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
       </div>
     </header>
 
     <main>
       <section class="config" id="config">
         <h2>설정</h2>
-        <datalist id="tierList">
-          <option value="Challenger" />
-          <option value="Grandmaster" />
-          <option value="Master" />
-          <option value="Diamond I" />
-          <option value="Diamond II" />
-          <option value="Diamond III" />
-          <option value="Diamond IV" />
-          <option value="Emerald I" />
-          <option value="Emerald II" />
-          <option value="Emerald III" />
-          <option value="Emerald IV" />
-          <option value="Platinum I" />
-          <option value="Platinum II" />
-          <option value="Platinum III" />
-          <option value="Platinum IV" />
-          <option value="Gold I" />
-          <option value="Gold II" />
-          <option value="Gold III" />
-          <option value="Gold IV" />
-          <option value="Silver I" />
-          <option value="Silver II" />
-          <option value="Silver III" />
-          <option value="Silver IV" />
-          <option value="Bronze I" />
-          <option value="Bronze II" />
-          <option value="Bronze III" />
-          <option value="Bronze IV" />
-          <option value="Iron I" />
-          <option value="Iron II" />
-          <option value="Iron III" />
-          <option value="Iron IV" />
-        </datalist>
+        <div class="teamnames">
+          <label>팀 이름</label>
+          <div id="teamNames" class="teams-inputs"></div>
+          <div class="hint">팀 수는 전체 인원 ÷ 5(올림)로 결정됩니다.</div>
+        </div>
+        
         <div class="grid">
           <div>
-            <label>팀 이름 (4팀)</label>
-            <div class="teams-inputs">
-              <input type="text" id="team0" value="팀 A" />
-              <input type="text" id="team1" value="팀 B" />
-              <input type="text" id="team2" value="팀 C" />
-              <input type="text" id="team3" value="팀 D" />
-            </div>
-            <label>팀장 (4명)
-              <span class="hint">한 줄에 하나. 팀장 4명은 경매 대상에서 제외되며 입찰만 진행합니다.</span>
-            </label>
-            <textarea id="leaders" rows="5" placeholder="예) 팀장1\n팀장2\n팀장3\n팀장4"></textarea>
             <label><input type="checkbox" id="useLeadersAsTeamNames" checked /> 팀장 이름을 팀명으로 사용</label>
-            <div class="hint">아래 목록에서 드래그 또는 버튼으로 순서를 조정하세요.</div>
-            <div id="leadersPreview" class="leaders-preview"></div>
-            <label>팀 예산 (기본 1000)</label>
-            <input type="number" id="budget" value="1000" min="1" />
-            <label>팀 최대 인원 (롤 기준 5)</label>
-            <input type="number" id="rosterSize" value="5" min="1" />
+            <div class="hint">선수 카드에서 팀장을 선택하세요.</div>
+            
             <label><input type="checkbox" id="enforceRoles" /> 포지션(Top/Jungle/Mid/ADC/Support) 중복 방지</label>
             <label><input type="checkbox" id="randomizeOrder" checked /> 경매 순서 무작위 추첨</label>
-            <label><input type="checkbox" id="randomizeTeamOrder" /> 팀 순서 무작위(입찰 팀 목록 섞기)</label>
             <label><input type="checkbox" id="nominationMode" /> 지명(턴제) 모드 사용</label>
+            <div id="randomizeTeamOrderContainer" class="hidden">
+              <label><input type="checkbox" id="randomizeTeamOrder" /> 팀 순서 무작위(입찰 팀 목록 섞기)</label>
+            </div>
             <div class="hint">입찰은 5포인트 단위, 시작가 5포인트</div>
-          </div>
-          <div>
-            <label>선수 목록 (20명)
-              <span class="hint">한 줄에 하나. 형식: 이름[, 역할1|역할2][, 티어][, 이미지URL][, 설명]  예) Faker, Mid|ADC, Diamond 1, https://...jpg, 미드/원딜 가능</span>
-            </label>
-            <textarea id="players" rows="14"></textarea>
-            <div class="hint">각 카드에 이미지 파일을 드래그&드롭하면 해당 선수에 이미지가 추가됩니다.</div>
-            <div id="playersPreview" class="players-preview"></div>
           </div>
         </div>
         <div class="actions">
           <button id="startBtn">경매 시작</button>
           <button id="loadStateBtn">이전 상태 불러오기</button>
           <button id="resetBtn" class="ghost">초기화</button>
+          <!-- 🔧 DEBUG: 나중에 제거할 것! -->
+          <button id="debugAuctionBtn" class="debug-btn" style="background: #ff6b6b; color: white; border: 2px solid #ff4444;">🔧 [DEBUG] 바로 경매화면</button>
         </div>
+      </section>
+
+      <!-- 사이트 하단에 고정된 선수 카드 영역 -->
+      <section class="players-section" id="playersSection">
+        <div class="topbar">
+          <h2>선수 카드</h2>
+          <button id="togglePlayersSection" class="ghost">접기</button>
+        </div>
+        <div class="pcount">
+          <label for="totalPlayers">전체 인원수</label>
+          <input type="number" id="totalPlayers" value="20" min="1" max="200" />
+          <span class="hint">각 카드 이미지 영역에 드래그 또는 클릭 업로드 가능</span>
+        </div>
+        <div class="actions">
+          <button id="rebuildCardsBtn" class="ghost">선수카드 다시 생성</button>
+        </div>
+        <div id="playerCards" class="player-cards"></div>
       </section>
 
       <section class="auction hidden" id="auction">
-        <div class="auction-top">
-          <div class="now-playing">
-            <div class="label">현재 선수</div>
-            <div id="currentPlayer" class="pill">-</div>
-          </div>
-          <div class="timer">
-            <div class="label">타이머</div>
-            <div>
-              <input type="number" id="timerSeconds" value="30" min="5" />
-              <button id="timerStart">시작</button>
-              <button id="timerStop">정지</button>
-              <span id="timerDisplay">00:30</span>
+        <div class="auction-main-content">
+          <div class="auction-round-info">
+            <div class="round-section">
+              <div class="label">라운드</div>
+              <div id="roundText" class="pill">본경매</div>
+            </div>
+            <div class="queue-section">
+              <div class="label">남은 선수</div>
+              <div id="remainingCount" class="pill">0</div>
             </div>
           </div>
-          <div class="round">
-            <div class="label">라운드</div>
-            <div id="roundText" class="pill">본경매</div>
+
+          <div class="current-visual">
+            <div class="label">현재 선수</div>
+            <div id="currentPlayer" class="pill">
+              <img id="currentPlayerImage" class="player-icon" src="assets/roles/jungler.png" alt="선수 역할 아이콘">
+              <span id="currentPlayerNameAndRole">-</span>
+            </div>
           </div>
-          <div class="queue">
-            <div class="label">남은 선수</div>
-            <div id="remainingCount">0</div>
+
+          <div class="current-visual">
+            <div class="image-frame" id="currentImageWrap">
+              <img id="currentImage" alt="현재 선수 이미지" />
+            </div>
+            <div class="image-caption" id="currentImageCaption"></div>
+          </div>
+
+          <div class="player-info-row">
+            <div class="info-item">
+              <div class="label">티어</div>
+              <div id="currentTier" class="pill">-</div>
+            </div>
+            <div class="info-item">
+              <div class="label">라인</div>
+              <div id="currentRoles" class="pill">-</div>
+            </div>
+            <div class="info-item quote-item">
+              <div class="label">선수 한마디 (각오)</div>
+              <div id="currentQuote" class="quote-box">-</div>
+            </div>
+          </div>
+
+          <section class="teams" id="teams"></section>
+
+          <div class="auction-controls">
+            <div>
+              <label>입찰 팀</label>
+              <select id="bidTeam"></select>
+            </div>
+            <div>
+              <label>입찰 금액</label>
+              <input type="number" id="bidAmount" min="5" step="5" value="5" />
+            </div>
+            <div class="buttons">
+              <button id="placeBidBtn">입찰</button>
+              <button id="assignBtn" class="primary">낙찰 처리</button>
+              <button id="skipBtn" class="ghost">패스/다음 선수</button>
+              <button id="undoBtn">되돌리기</button>
+              <button id="nominateBtn" class="ghost">지명</button>
+            </div>
+            <div class="highest">
+              <span>최고 입찰:</span>
+              <span id="highestText">-</span>
+            </div>
+            <div id="nominatorBar" class="highest">지명 팀: <span id="nominatorTeam">-</span></div>
+            <div id="nominateBox" class="hidden">
+              <label>지명할 선수 선택</label>
+              <select id="nominateSelect"></select>
+              <button id="nominateConfirm">확정</button>
+              <button id="nominateCancel" class="ghost">취소</button>
+            </div>
+          </div>
+
+          <div class="persist">
+            <button id="saveBtn">상태 저장</button>
+            <button id="exportCsvBtn">CSV 내보내기</button>
+            <button id="exportJsonBtn" class="ghost">JSON 내보내기</button>
           </div>
         </div>
 
-        <div class="current-visual">
-          <div class="image-frame" id="currentImageWrap">
-            <img id="currentImage" alt="현재 선수 이미지" />
-          </div>
-          <div class="image-caption" id="currentImageCaption"></div>
-        </div>
-
-        <div class="current-quote">
-          <div class="label">선수 한마디 (각오)</div>
-          <div id="currentQuote" class="quote-box">-</div>
-        </div>
-
-        <div class="current-meta">
-          <div>
-            <div class="label">티어</div>
-            <div id="currentTier" class="pill">-</div>
-          </div>
-          <div>
-            <div class="label">라인</div>
-            <div id="currentRoles" class="pill">-</div>
-          </div>
-        </div>
-
-        <div class="auction-controls">
-          <div>
-            <label>입찰 팀</label>
-            <select id="bidTeam"></select>
-          </div>
-          <div>
-            <label>입찰 금액</label>
-            <input type="number" id="bidAmount" min="5" step="5" value="5" />
-          </div>
-          <div class="buttons">
-            <button id="placeBidBtn">입찰</button>
-            <button id="assignBtn" class="primary">낙찰 처리</button>
-            <button id="skipBtn" class="ghost">패스/다음 선수</button>
-            <button id="undoBtn">되돌리기</button>
-            <button id="nominateBtn" class="ghost">지명</button>
-          </div>
-          <div class="highest">
-            <span>최고 입찰:</span>
-            <span id="highestText">-</span>
-          </div>
-          <div id="nominatorBar" class="highest">지명 팀: <span id="nominatorTeam">-</span></div>
-          <div id="nominateBox" class="hidden">
-            <label>지명할 선수 선택</label>
-            <select id="nominateSelect"></select>
-            <button id="nominateConfirm">확정</button>
-            <button id="nominateCancel" class="ghost">취소</button>
-          </div>
-        </div>
-
-        <section class="teams" id="teams"></section>
-
-        <div class="persist">
-          <button id="saveBtn">상태 저장</button>
-          <button id="exportCsvBtn">CSV 내보내기</button>
-          <button id="exportJsonBtn" class="ghost">JSON 내보내기</button>
-        </div>
-      </section>
     </main>
 
     <footer>
-      <small>오프라인 전용. 브라우저 LocalStorage 저장 지원.</small>
+      <div class="footer-content">
+        <div class="footer-info">
+          <small>오프라인 전용. 브라우저 LocalStorage 저장 지원.</small><br/>
+          <small>League of Legends 및 관련 이미지의 저작권은 Riot Games, Inc.에 있습니다. This application is not endorsed by Riot Games and does not reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties.</small>
+        </div>
+        <div class="footer-controls">
+          <div class="footer-control-group">
+            <label for="uiScaleFooter">UI 크기</label>
+            <select id="uiScaleFooter">
+              <option value="small">작게</option>
+              <option value="normal" selected>보통</option>
+              <option value="large">크게</option>
+            </select>
+          </div>
+          <div class="footer-control-group">
+            <label for="languageSelect">언어</label>
+            <select id="languageSelect">
+              <option value="ko" selected>한국어</option>
+              <option value="en">English</option>
+            </select>
+          </div>
+        </div>
+      </div>
     </footer>
 
     <script src="app.js"></script>
   </body>
-  </html>
+</html>
