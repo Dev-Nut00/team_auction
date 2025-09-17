@@ -1,76 +1,178 @@
-# 롤 팀 경매 시스템 — 오프라인 웹앱
+# 🏆 리그 오브 레전드 팀 경매 시스템
 
-오프라인 환경에서 사용자 정의 인원과 팀 구성을 지원하는 경매 진행 도구입니다. 브라우저에서 `index.html`만 열면 동작하며, 팀장/역할/티어/이미지/각오 입력, 입찰 규칙, 재경매, 지명(턴제) 등 운영에 필요한 기능을 제공합니다.
+> 오프라인 환경에서 사용하는 LoL 팀 구성 경매 웹 애플리케이션
 
-## 빠른 시작
-- 방법 1: 파일 직접 열기
-  - `index.html`을 더블클릭하여 브라우저로 엽니다.
-- 방법 2: 로컬 서버 실행(선택)
-  - Python(Windows): `py -m http.server 5173`
-  - Python(mac/Linux): `python3 -m http.server 5173`
-  - Node.js: `npx http-server -p 5173 .` 또는 `npx serve -l 5173 .`
-  - 접속: `http://localhost:5173/`
+![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-blue.svg)
+![Platform](https://img.shields.io/badge/platform-Web-brightgreen.svg)
+![Language](https://img.shields.io/badge/language-Korean-red.svg)
 
-## 주요 기능
-- 선수카드 통합 편집(설정 화면)
-  - 이미지: 드래그&드롭, 클릭 업로드, 클립보드 붙여넣기(오프라인) + 자동 리사이즈/압축(JPEG 0.7, 최대 1280px)
-  - 라인: Top/Jungle/Mid/ADC/Support 칩 토글 + 기타 역할(|로 구분)
-  - 티어: 자유 입력 + 추천 목록(datalist), D2/G1 등의 약식 입력 정규화
-  - 한마디(각오): 텍스트 입력 → 경매 화면에 크게 표시
-  - 팀장: 체크로 지정/해제 + 위/아래 버튼(최대 4명). 팀장 목록 UI와 동기화
-- 팀장/팀
-  - 팀장 4명은 경매 풀에서 자동 제외(입찰만)
-  - 옵션: 팀장 이름을 팀명으로 사용
-- 진행 옵션
-  - 선수 경매 순서: 무작위/순서대로
-  - 팀 순서(입찰 팀 드롭다운): 무작위/순서대로(재경매 시작 시 재섞기 옵션)
-  - 지명(턴제) 모드: 현재 턴의 팀이 남은 선수 중에서 한 명을 ‘지명’해 차례에 올림
-- 입찰 규칙/진행
-  - 시작가 5, 입찰 단위 5, 팀 잔액 이내, 팀 최대 인원 제한(기본 5)
-  - 역할 중복 방지(옵션): 같은 팀 내 같은 라인 중복을 제한
-  - 유찰 처리/재경매: 본경매 1회 → 유찰 재경매 최대 2회 → 이후 남은 선수 0포 무작위 배정
-  - 되돌리기(Undo): 직전 입찰/낙찰/유찰 복구
-- 내보내기/저장
-  - CSV: Team, Leader, Player, Roles, Tier, ImageURL, Description, Cost, BudgetLeftAfter
-  - JSON: 설정/팀/로스터 전체 상태 저장
-  - 브라우저 LocalStorage 자동 저장/불러오기, 구버전 마이그레이션 지원
-- 기타
-  - UI 크기 토글(작게/보통/크게)
-  - 반응형/오버플로우 대응(긴 텍스트/버튼 줄바꿈)
+## 📖 소개
 
-## 입력 방법
-- 설정 화면 하단의 “선수 카드”에서 이름/라인/티어/이미지/각오/팀장을 직접 입력합니다.
-- 라인은 `Top/Jungle/Mid/ADC/Support` 칩으로 선택하고, 기타 역할은 `|`로 구분해 입력합니다.
+리그 오브 레전드 팀 경매 시스템은 오프라인 환경에서 팀 구성을 위한 경매를 진행할 수 있는 웹 애플리케이션입니다.
+브라우저에서 `index.html` 파일만 열면 바로 사용할 수 있으며, 서버 설치나 인터넷 연결이 필요하지 않습니다.
 
-## 사용 흐름
-1) 설정
-- 팀장 지정(선수카드에서 체크/순서 조정)
-- 팀 이름/예산/최대 인원/옵션(역할 중복 방지, 경매/팀 순서, 지명 모드) 설정
-- 선수카드에서 직접 편집(이미지·라인·티어·각오)
-2) 경매 시작
-- 현재 선수 확인 → 입찰 팀/금액 입력 → 입찰/낙찰/패스/되돌리기
-- 지명 모드: ‘지명’ 버튼으로 남은 선수 중 선택해 현재 순서로 올림
-- 라운드 전환/재경매/최종 0포 배정 자동 처리
-3) 저장/내보내기
-- LocalStorage 저장/불러오기, CSV/JSON 결과 내보내기
+### ✨ 주요 특징
 
-## 알려진 이슈/제한
-- LocalStorage 용량(일반적으로 5~10MB). 큰 이미지(특히 PNG) 다수 저장 시 저장 실패/느려짐 가능 → 자동 압축으로 완화
-- 브라우저 별 Data URL 크기 제한 영향 가능
-- 오프라인 전용: 외부 URL 이미지가 네트워크 차단되면 보이지 않을 수 있음(권장: 드롭/붙여넣기로 Data URL 사용)
+- 🌐 **완전 오프라인**: 서버 없이 브라우저에서 바로 실행
+- 🎮 **직관적 UI**: 게임에 최적화된 사용자 인터페이스
+- 📱 **반응형 디자인**: 다양한 화면 크기 지원
+- 💾 **자동 저장**: 브라우저 LocalStorage를 통한 데이터 보존
+- 📊 **데이터 내보내기**: CSV/JSON 형식 지원
 
-## 개발 노트
-- 순수 HTML/CSS/JS 정적 앱
-- 빌드/런타임 의존성 없음(서버 불필요)
-- 스타일: `style.css`, 로직: `app.js`, 마크업: `index.html`
+## 🚀 빠른 시작
 
-## 라이선스
-- 본 프로젝트는 Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0) 라이선스를 따릅니다.
-  - 비영리 용도로 자유롭게 사용/수정/배포 가능합니다.
-  - 사용 시 반드시 출처(저작자, 저장소 링크)를 명시해야 합니다.
-  - 상업적 이용은 허용되지 않습니다.
-  - 전문은 `LICENSE` 파일 또는 https://creativecommons.org/licenses/by-nc/4.0/legalcode 를 참고하세요.
+### 방법 1: 파일 직접 실행 (권장)
+```bash
+# 다운로드 후 index.html 더블클릭
+```
 
-## 저작권 고지(자산)
-- League of Legends 및 관련 이미지(역할/티어 아이콘 포함)의 저작권은 Riot Games, Inc.에 있습니다.
-- This application is not endorsed by Riot Games and does not reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties.
+### 방법 2: 로컬 서버 실행
+```bash
+# Python 사용
+python -m http.server 8080
+
+# Node.js 사용
+npx serve -l 8080 .
+
+# 브라우저에서 http://localhost:8080 접속
+```
+
+## 🎯 핵심 기능
+
+### 📋 선수 카드 관리
+- **이미지 업로드**: 드래그&드롭, 클릭, 클립보드 붙여넣기 지원
+- **자동 최적화**: 이미지 압축 및 리사이징 (JPEG 0.7, 최대 1280px)
+- **포지션 설정**: Top/Jungle/Mid/ADC/Support 선택 + 커스텀 역할
+- **티어 입력**: 자유 입력 및 추천 목록 제공
+- **선수 각오**: 경매 화면에 표시되는 한마디
+
+### 👑 팀장 시스템
+- 최대 4명까지 팀장 지정 가능
+- 팀장은 경매 대상에서 자동 제외
+- 팀장 이름을 팀명으로 사용하는 옵션 제공
+
+### 🔨 경매 진행
+- **입찰 시스템**: 5포인트 단위, 시작가 5포인트
+- **예산 관리**: 팀별 잔여 예산 실시간 표시
+- **역할 제한**: 같은 포지션 중복 방지 옵션
+- **지명 모드**: 턴제 방식으로 선수 지명 가능
+- **되돌리기**: 직전 입찰/낙찰 취소 기능
+
+### ⏱️ 타이머 기능
+- 입찰 시간 제한 설정 (5-300초)
+- 시각적/음향 알림
+- 타이머 활성화/비활성화 옵션
+
+### 📁 데이터 관리
+- **자동 저장**: LocalStorage 기반 실시간 저장
+- **상태 복원**: 이전 경매 상태 불러오기
+- **CSV 내보내기**: 팀별 로스터 및 비용 정보
+- **JSON 내보내기**: 전체 경매 데이터 및 설정
+
+## 🎮 사용 방법
+
+### 1️⃣ 초기 설정
+1. **선수 정보 입력**: 하단 "선수 카드" 섹션에서 선수별 정보 작성
+2. **팀장 지정**: 선수 카드에서 팀장 체크박스 선택
+3. **경매 옵션 설정**:
+   - 포지션 중복 방지
+   - 경매 순서 랜덤화
+   - 지명 모드 활성화
+
+### 2️⃣ 경매 진행
+1. **경매 시작** 버튼 클릭
+2. 현재 선수 정보 확인
+3. 입찰 팀 선택 및 금액 입력
+4. **입찰** → **낙찰 처리** 또는 **패스/다음 선수**
+
+### 3️⃣ 결과 관리
+1. **상태 저장**: 현재 진행 상황 저장
+2. **CSV 내보내기**: 팀별 최종 결과 다운로드
+3. **JSON 내보내기**: 전체 데이터 백업
+
+## ⚙️ 기술 스펙
+
+| 구성요소 | 기술 |
+|---------|------|
+| **Frontend** | HTML5, CSS3, Vanilla JavaScript |
+| **스타일링** | CSS Custom Properties, Flexbox, Grid |
+| **저장소** | Browser LocalStorage |
+| **호환성** | 모던 브라우저 (Chrome, Firefox, Safari, Edge) |
+
+### 📁 파일 구조
+```
+team_auction/
+├── index.html          # 메인 HTML 파일
+├── style.css           # 스타일시트
+├── app.js             # 애플리케이션 로직
+├── assets/            # 아이콘 및 이미지 (선택사항)
+└── README.md          # 프로젝트 문서
+```
+
+## 🎨 UI 커스터마이징
+
+### 테마 색상
+CSS Custom Properties를 통해 쉽게 커스터마이징 가능:
+
+```css
+:root {
+  --bg-primary: #0f1221;      /* 메인 배경 */
+  --accent-primary: #7aa2ff;   /* 강조 색상 */
+  --accent-secondary: #5de5b2; /* 보조 강조 색상 */
+  --text-primary: #e8ebff;     /* 메인 텍스트 */
+}
+```
+
+### UI 크기 조절
+애플리케이션 하단에서 3단계 크기 조절 가능:
+- 작게 (90%)
+- 보통 (100%)
+- 크게 (120%)
+
+## ⚠️ 제한사항 및 고려사항
+
+- **브라우저 저장 용량**: LocalStorage 한계 (일반적으로 5-10MB)
+- **이미지 크기**: 큰 이미지 다수 사용 시 성능 저하 가능
+- **오프라인 전용**: 외부 이미지 URL은 인터넷 연결 필요
+- **브라우저 호환성**: IE는 지원하지 않음
+
+## 🔧 문제 해결
+
+### 자주 묻는 질문
+
+**Q: 이미지가 표시되지 않아요**
+A: 이미지를 드래그&드롭이나 클릭 업로드로 다시 등록해보세요. 외부 URL 이미지는 인터넷 연결이 필요합니다.
+
+**Q: 데이터가 사라졌어요**
+A: 브라우저 데이터 삭제 시 LocalStorage도 함께 삭제됩니다. 정기적으로 JSON 내보내기를 통해 백업하세요.
+
+**Q: 경매 중 오류가 발생했어요**
+A: **되돌리기** 버튼을 사용하거나, 최악의 경우 **이전 상태 불러오기**를 시도하세요.
+
+## 🤝 기여
+
+버그 리포트나 기능 제안은 GitHub Issues를 통해 제출해주세요.
+
+## 📄 라이선스
+
+이 프로젝트는 **Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)** 라이선스를 따릅니다.
+
+- ✅ 비영리 용도로 자유롭게 사용/수정/배포 가능
+- ✅ 출처 표시 필수
+- ❌ 상업적 이용 금지
+
+자세한 내용: [CC BY-NC 4.0 License](https://creativecommons.org/licenses/by-nc/4.0/)
+
+## 👨‍💻 개발자
+
+**Made by Mad-Nut**
+GitHub: [Dev-Nut00](https://github.com/Dev-Nut00)
+
+## ⚖️ 저작권 고지
+
+League of Legends 및 관련 이미지의 저작권은 **Riot Games, Inc.**에 있습니다.
+This application is not endorsed by Riot Games and does not reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties.
+
+---
+
+> 🎮 **즐거운 경매 되세요!** LoL 팀 구성의 새로운 재미를 경험해보세요.

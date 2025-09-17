@@ -172,6 +172,7 @@ const App = (() => {
     }
   };
 
+
   // ===== UI MANAGEMENT =====
   const UIManager = {
     applyScale(scale) {
@@ -188,13 +189,8 @@ const App = (() => {
         console.warn('Failed to save UI scale preference:', e);
       }
 
-      // Sync all UI scale selects
-      const uiScaleHeader = document.getElementById('uiScaleHeader');
+      // Sync footer UI scale select
       const uiScaleFooter = document.getElementById('uiScaleFooter');
-
-      if (uiScaleHeader && uiScaleHeader.value !== scale) {
-        uiScaleHeader.value = scale;
-      }
       if (uiScaleFooter && uiScaleFooter.value !== scale) {
         uiScaleFooter.value = scale;
       }
@@ -276,7 +272,7 @@ const App = (() => {
             <div class="pc-name"><input type="text" class="pc-input-name" value="${Utils.escapeHtml(p.name)}" placeholder="이름"/></div>
             <label class="pc-leader"><input type="checkbox" class="pc-input-leader" ${prev.leaders.includes(p.name) ? 'checked' : ''}/> 팀장</label>
           </div>
-          <div class="frame" data-data-url="${p.image ? Utils.escapeHtml(p.image) : ''}">${p.image ? `<img src="${Utils.escapeHtml(p.image)}"/>` : '이미지 드롭/클릭'}</div>
+          <div class="frame" data-data-url="${p.image ? Utils.escapeHtml(p.image) : ''}">${p.image ? `<img src="${Utils.escapeHtml(p.image)}"/>` : '<div class="upload-hint">이미지 드롭/클릭<br><small>권장: 4:3 비율</small></div>'}</div>
           <div class="pc-row">
             <div class="pc-full">
               <div class="ctrl-title">라인</div>
@@ -299,7 +295,7 @@ const App = (() => {
 
   function updateAuctionUI() {
     const cp = state.queue?.[state.currentIndex] || null;
-    if (els.currentPlayer) els.currentPlayer.textContent = cp ? `${cp.name} (${(cp.roles || []).join('/')})` : '모두 완료';
+    if (els.currentPlayer) els.currentPlayer.textContent = cp ? cp.name : '모두 완료';
     if (els.remainingCount) els.remainingCount.textContent = Math.max(0, (state.queue?.length || 0) - (state.currentIndex + (cp ? 1 : 0)));
     if (els.currentImageWrap) {
         if (cp && cp.image) {
@@ -704,11 +700,6 @@ const App = (() => {
     // Config screen
     els.uiScale?.addEventListener('change', e => UIManager.applyScale(e.target.value));
 
-    // Header UI scale sync
-    const uiScaleHeader = document.getElementById('uiScaleHeader');
-    if (uiScaleHeader) {
-      uiScaleHeader.addEventListener('change', e => UIManager.applyScale(e.target.value));
-    }
 
     // Footer UI scale sync
     const uiScaleFooter = document.getElementById('uiScaleFooter');
@@ -737,45 +728,20 @@ const App = (() => {
     document.getElementById('loadStateBtn').addEventListener('click', DataManager.loadState);
     document.getElementById('resetBtn').addEventListener('click', () => { localStorage.removeItem(CONSTANTS.LS_KEY); window.location.reload(); });
 
-    // 🔧 DEBUG: 나중에 제거할 것!
-    document.getElementById('debugAuctionBtn').addEventListener('click', () => {
-      console.warn('🔧 DEBUG MODE: 바로 경매화면으로 이동 (배포 전 제거 필요!)');
+    // Export buttons
+    const saveBtn = document.getElementById('saveBtn');
+    const exportCsvBtn = document.getElementById('exportCsvBtn');
+    const exportJsonBtn = document.getElementById('exportJsonBtn');
 
-      // 간단한 더미 데이터로 state 설정
-      state = {
-        started: true,
-        enforceRoles: false,
-        rosterSize: 5,
-        randomizeOrder: true,
-        randomizeTeamOrder: false,
-        nominationMode: false,
-        round: 0,
-        reauctionMax: 2,
-        teams: [
-          { id: 0, name: '팀 A', leader: '팀장A', budgetLeft: 1000, roster: [] },
-          { id: 1, name: '팀 B', leader: '팀장B', budgetLeft: 1000, roster: [] },
-          { id: 2, name: '팀 C', leader: '팀장C', budgetLeft: 1000, roster: [] },
-          { id: 3, name: '팀 D', leader: '팀장D', budgetLeft: 1000, roster: [] }
-        ],
-        queue: [
-          { name: '테스트선수1', roles: ['Mid'], tier: 'Gold', imageUrl: '', description: '테스트 각오' },
-          { name: '테스트선수2', roles: ['ADC'], tier: 'Silver', imageUrl: '', description: '열심히 하겠습니다' }
-        ],
-        leaders: ['팀장A', '팀장B', '팀장C', '팀장D'],
-        teamOrder: [0, 1, 2, 3],
-        currentIndex: 0,
-        highest: null,
-        unsoldCollector: [],
-        history: []
-      };
+    if (saveBtn) {
+      saveBtn.addEventListener('click', () => {
+        DataManager.saveState();
+        alert('현재 상태가 저장되었습니다.');
+      });
+    }
+    if (exportCsvBtn) exportCsvBtn.addEventListener('click', exportToCSV);
+    if (exportJsonBtn) exportJsonBtn.addEventListener('click', exportToJSON);
 
-      // UI 전환
-      els.config.classList.add('hidden');
-      els.playersSection.classList.add('hidden');
-      document.getElementById('auction').classList.remove('hidden');
-
-      updateAuctionUI();
-    });
 
     // Player cards
     els.playerCards.addEventListener('click', (e) => {
@@ -911,6 +877,80 @@ const App = (() => {
         TimerManager.stop();
       });
     }
+  }
+
+  // ===== EXPORT FUNCTIONS =====
+  function exportToCSV() {
+    if (!state.started || !state.teams) {
+      alert('경매가 진행되지 않았습니다.');
+      return;
+    }
+
+    const headers = ['Team', 'Leader', 'Player', 'Roles', 'Tier', 'ImageURL', 'Description', 'Cost', 'BudgetLeftAfter'];
+    const rows = [headers.join(',')];
+
+    state.teams.forEach(team => {
+      const budgetLeftAfter = team.budgetLeft;
+      if (team.roster && team.roster.length > 0) {
+        team.roster.forEach(player => {
+          const row = [
+            `"${team.name}"`,
+            `"${team.leader || ''}"`,
+            `"${player.name || ''}"`,
+            `"${(player.roles || []).join('/')}"`,
+            `"${player.tier || ''}"`,
+            `"${player.image || ''}"`,
+            `"${player.description || ''}"`,
+            player.cost || 0,
+            budgetLeftAfter
+          ];
+          rows.push(row.join(','));
+        });
+      } else {
+        // 선수가 없는 팀도 표시
+        const row = [
+          `"${team.name}"`,
+          `"${team.leader || ''}"`,
+          '""', '""', '""', '""', '""', 0, budgetLeftAfter
+        ];
+        rows.push(row.join(','));
+      }
+    });
+
+    const csvContent = rows.join('\n');
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `auction_results_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+  }
+
+  function exportToJSON() {
+    if (!state.started) {
+      alert('경매가 진행되지 않았습니다.');
+      return;
+    }
+
+    const exportData = {
+      timestamp: new Date().toISOString(),
+      teams: state.teams,
+      settings: {
+        enforceRoles: state.enforceRoles,
+        rosterSize: state.rosterSize,
+        randomizeOrder: state.randomizeOrder,
+        nominationMode: state.nominationMode
+      },
+      queue: state.queue,
+      currentIndex: state.currentIndex,
+      history: state.history
+    };
+
+    const jsonContent = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([jsonContent], { type: 'application/json' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `auction_data_${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
   }
 
   // ===== INITIALIZATION =====
