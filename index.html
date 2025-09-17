@@ -7,6 +7,18 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
+    <!-- 디버깅 버튼들 -->
+    <div class="debug-panel" id="debugPanel">
+      <div class="debug-toggle" id="debugToggle">🔧</div>
+      <div class="debug-buttons hidden" id="debugButtons">
+        <button id="debugGoToConfig" class="debug-btn">설정 화면</button>
+        <button id="debugGoToIntro" class="debug-btn">팀장 소개</button>
+        <button id="debugGoToAuction" class="debug-btn">본경매</button>
+        <button id="debugGoToComplete" class="debug-btn">경매 결과</button>
+        <button id="debugCreateSampleData" class="debug-btn">샘플 데이터</button>
+      </div>
+    </div>
+
     <header>
       <div class="title">
         <h1>롤 팀 경매 시스템</h1>
@@ -106,8 +118,59 @@
         <div id="playerCards" class="player-cards"></div>
       </section>
 
+      <section class="team-introduction hidden" id="teamIntroduction">
+        <div class="intro-header">
+          <h2>🎯 팀장 소개 및 경매 안내</h2>
+          <p class="intro-subtitle">각 팀장들과 예산을 확인하고 경매를 시작하세요</p>
+        </div>
+
+        <div class="leaders-grid" id="leadersGrid">
+          <!-- 팀장 카드들이 여기에 표시됩니다 -->
+        </div>
+
+        <div class="auction-rules">
+          <h3>📋 경매 규칙</h3>
+          <div class="rules-grid">
+            <div class="rule-item">
+              <div class="rule-icon">💰</div>
+              <div class="rule-content">
+                <strong>입찰 방식</strong>
+                <p>5포인트 단위로 입찰, 시작가 5포인트</p>
+              </div>
+            </div>
+            <div class="rule-item">
+              <div class="rule-icon">🎲</div>
+              <div class="rule-content">
+                <strong>경매 순서</strong>
+                <p id="auctionOrderRule">설정에 따라 결정됩니다</p>
+              </div>
+            </div>
+            <div class="rule-item">
+              <div class="rule-icon">🔄</div>
+              <div class="rule-content">
+                <strong>유찰 처리</strong>
+                <p>본경매 → 유찰라운드 1 → 유찰라운드 2 → 랜덤배정</p>
+              </div>
+            </div>
+            <div class="rule-item" id="roleEnforcementRule">
+              <div class="rule-icon">⚡</div>
+              <div class="rule-content">
+                <strong>포지션 제한</strong>
+                <p id="roleEnforcementText">설정에 따라 결정됩니다</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="intro-actions">
+          <button id="backToConfigBtn" class="ghost">설정으로 돌아가기</button>
+          <button id="startAuctionFromIntroBtn" class="primary">경매 시작!</button>
+        </div>
+      </section>
+
       <section class="auction hidden" id="auction">
-        <div class="auction-main-content">
+        <!-- 상단 라운드 정보 -->
+        <div class="auction-header">
           <div class="auction-round-info">
             <div class="round-section">
               <div class="label">라운드</div>
@@ -117,75 +180,142 @@
               <div class="label">남은 선수</div>
               <div id="remainingCount" class="pill">0</div>
             </div>
-          </div>
-
-          <div class="current-visual">
-            <div class="label">현재 선수</div>
-            <div id="currentPlayer" class="pill">
-              <img id="currentPlayerImage" class="player-icon" src="assets/roles/jungler.png" alt="선수 역할 아이콘">
-              <span id="currentPlayerNameAndRole">-</span>
+            <div id="roundDescription" class="round-description">
+              모든 선수를 경매합니다
             </div>
           </div>
+        </div>
 
-          <div class="current-visual">
-            <div class="image-frame" id="currentImageWrap">
-              <img id="currentImage" alt="현재 선수 이미지" />
-            </div>
-            <div class="image-caption" id="currentImageCaption"></div>
+        <!-- 메인 경매 영역 -->
+        <div class="auction-layout">
+          <!-- 왼쪽 팀들 -->
+          <div class="teams-left" id="teamsLeft">
+            <!-- 왼쪽 팀들이 여기에 표시됩니다 -->
           </div>
 
-          <div class="player-info-row">
-            <div class="info-item">
-              <div class="label">티어</div>
-              <div id="currentTier" class="pill">-</div>
+          <!-- 중앙 선수 정보 -->
+          <div class="player-center">
+            <div class="current-player-header">
+              <div class="label">현재 선수</div>
+              <div id="currentPlayer" class="pill">
+                <img id="currentPlayerImage" class="player-icon" src="assets/roles/jungler.png" alt="선수 역할 아이콘">
+                <span id="currentPlayerNameAndRole">-</span>
+              </div>
             </div>
-            <div class="info-item">
-              <div class="label">라인</div>
-              <div id="currentRoles" class="pill">-</div>
-            </div>
-            <div class="info-item quote-item">
-              <div class="label">선수 한마디 (각오)</div>
-              <div id="currentQuote" class="quote-box">-</div>
-            </div>
-          </div>
 
-          <section class="teams" id="teams"></section>
+            <div class="player-image-section">
+              <div class="image-frame" id="currentImageWrap">
+                <img id="currentImage" alt="현재 선수 이미지" />
+              </div>
+              <div class="image-caption" id="currentImageCaption"></div>
+            </div>
 
-          <div class="auction-controls">
-            <div>
-              <label>입찰 팀</label>
-              <select id="bidTeam"></select>
+            <div class="player-info-horizontal">
+              <div class="player-tier-section">
+                <div class="label">티어</div>
+                <div id="currentTier" class="tier-display">-</div>
+              </div>
+              <div class="player-roles-section">
+                <div class="label">라인</div>
+                <div id="currentRoles" class="roles-display">-</div>
+              </div>
+              <div class="player-quote-section">
+                <div class="label">각오</div>
+                <div id="currentQuote" class="quote-display">-</div>
+              </div>
             </div>
-            <div>
-              <label>입찰 금액</label>
-              <input type="number" id="bidAmount" min="5" step="5" value="5" />
-            </div>
-            <div class="buttons">
-              <button id="placeBidBtn">입찰</button>
-              <button id="assignBtn" class="primary">낙찰 처리</button>
-              <button id="skipBtn" class="ghost">패스/다음 선수</button>
-              <button id="undoBtn">되돌리기</button>
-              <button id="nominateBtn" class="ghost">지명</button>
-            </div>
-            <div class="highest">
-              <span>최고 입찰:</span>
-              <span id="highestText">-</span>
-            </div>
-            <div id="nominatorBar" class="highest">지명 팀: <span id="nominatorTeam">-</span></div>
-            <div id="nominateBox" class="hidden">
-              <label>지명할 선수 선택</label>
-              <select id="nominateSelect"></select>
-              <button id="nominateConfirm">확정</button>
-              <button id="nominateCancel" class="ghost">취소</button>
+
+            <div class="bid-status">
+              <div class="highest-bid">
+                <span class="label">최고 입찰</span>
+                <span id="highestText" class="bid-amount">-</span>
+              </div>
             </div>
           </div>
 
-          <div class="persist">
+          <!-- 오른쪽 팀들 -->
+          <div class="teams-right" id="teamsRight">
+            <!-- 오른쪽 팀들이 여기에 표시됩니다 -->
+          </div>
+        </div>
+
+        <!-- 하단 경매 컨트롤 -->
+        <div class="auction-controls">
+          <div class="control-group">
+            <label>입찰 팀</label>
+            <select id="bidTeam"></select>
+          </div>
+          <div class="control-group">
+            <label>입찰 금액</label>
+            <input type="number" id="bidAmount" min="5" step="5" value="5" />
+          </div>
+          <div class="control-buttons">
+            <button id="placeBidBtn">입찰</button>
+            <button id="assignBtn" class="primary">낙찰 처리</button>
+            <button id="skipBtn" class="ghost">패스</button>
+            <button id="undoBtn">되돌리기</button>
+            <button id="nominateBtn" class="ghost">지명</button>
+          </div>
+        </div>
+
+        <!-- 지명 모드 & 기타 컨트롤 -->
+        <div class="auction-extras">
+          <div id="nominatorBar" class="nominator-info">지명 팀: <span id="nominatorTeam">-</span></div>
+          <div id="nominateBox" class="nominate-controls hidden">
+            <label>지명할 선수 선택</label>
+            <select id="nominateSelect"></select>
+            <button id="nominateConfirm">확정</button>
+            <button id="nominateCancel" class="ghost">취소</button>
+          </div>
+
+          <div class="persist-controls">
             <button id="saveBtn">상태 저장</button>
             <button id="exportCsvBtn">CSV 내보내기</button>
             <button id="exportJsonBtn" class="ghost">JSON 내보내기</button>
           </div>
         </div>
+      </section>
+
+      <section class="auction-complete hidden" id="auctionComplete">
+        <div class="complete-header">
+          <h2>🏆 경매 완료!</h2>
+          <div class="complete-stats">
+            <div class="stat-item">
+              <span class="stat-label">총 참여 선수</span>
+              <span id="totalPlayersCount" class="stat-value">0</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">평균 낙찰가</span>
+              <span id="averagePrice" class="stat-value">0</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">최고 낙찰가</span>
+              <span id="highestPrice" class="stat-value">0</span>
+            </div>
+          </div>
+          <div class="auction-info">
+            <p><strong>경매 진행 방식:</strong> 본경매 → 유찰라운드 1 → 유찰라운드 2 → 랜덤배정</p>
+            <p><span class="random-badge">랜덤</span> 표시는 2회 유찰 후 자동 배정된 선수입니다.</p>
+          </div>
+        </div>
+
+        <div class="final-teams" id="finalTeams">
+          <!-- 팀별 최종 구성이 여기에 표시됩니다 -->
+        </div>
+
+        <div id="unsoldPlayersSection" class="unsold-section hidden">
+          <h3>미판매 선수</h3>
+          <div id="unsoldPlayersList" class="unsold-list">
+            <!-- 미판매 선수 목록이 여기에 표시됩니다 -->
+          </div>
+        </div>
+
+        <div class="complete-actions">
+          <button id="exportFinalCsvBtn" class="primary">결과 CSV 내보내기</button>
+          <button id="exportFinalJsonBtn" class="secondary">결과 JSON 내보내기</button>
+          <button id="startNewAuctionBtn" class="ghost">새 경매 시작</button>
+        </div>
+      </section>
 
     </main>
 

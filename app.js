@@ -13,8 +13,105 @@ const CONSTANTS = {
   }
 };
 
+const AppState = (() => {
+  const DEFAULT_ROSTER_SIZE = 5;
+  const state = {
+    started: false,
+    leaderDetails: {}
+  };
+
+  const ensureLeaderDetails = () => {
+    if (!state.leaderDetails || typeof state.leaderDetails !== 'object') {
+      state.leaderDetails = {};
+    }
+  };
+
+  const normalizeLeader = (source) => ({
+    name: source?.name || '',
+    roles: Array.isArray(source?.roles) && source.roles.length
+      ? [...source.roles]
+      : (source?.role ? [source.role] : []),
+    role: source?.role || (Array.isArray(source?.roles) && source.roles.length ? source.roles[0] : null),
+    tier: source?.tier || null,
+    image: source?.image || null,
+    description: source?.description || ''
+  });
+
+  const replace = (nextState = {}) => {
+    Object.keys(state).forEach((key) => delete state[key]);
+    Object.assign(state, nextState);
+    ensureLeaderDetails();
+  };
+
+  const update = (partial = {}) => {
+    Object.assign(state, partial);
+    ensureLeaderDetails();
+  };
+
+  const hydrateTeamLeaderInfo = () => {
+    ensureLeaderDetails();
+    if (!Array.isArray(state.teams)) return;
+
+    state.teams.forEach((team) => {
+      if (!team) return;
+      if (!Array.isArray(team.roster)) {
+        team.roster = [];
+      }
+
+      const leaderName = team.leader;
+      if (!leaderName) return;
+
+      let info = getLeaderInfo(leaderName) || team.leaderInfo || null;
+      if (!info) {
+        const fromRoster = team.roster.find((player) => player?.name === leaderName);
+        if (fromRoster) {
+          info = normalizeLeader(fromRoster);
+        }
+      }
+
+      if (info) {
+        setLeaderInfo(leaderName, info);
+        team.leaderInfo = info;
+      }
+    });
+  };
+
+  const getLeaderInfo = (leaderName) => {
+    ensureLeaderDetails();
+    return leaderName ? state.leaderDetails[leaderName] || null : null;
+  };
+
+  const setLeaderInfo = (leaderName, info) => {
+    if (!leaderName || !info) return;
+    ensureLeaderDetails();
+    state.leaderDetails[leaderName] = info;
+  };
+
+  const getRosterCapacity = () => state.rosterSize || DEFAULT_ROSTER_SIZE;
+
+  const getMemberCount = (team) => {
+    if (!team) return 0;
+    const rosterList = Array.isArray(team.roster) ? team.roster : [];
+    const leaderName = team.leader;
+    const leaderAlreadyOnRoster = leaderName && rosterList.some((player) => player?.name === leaderName);
+    return rosterList.length + (leaderName && !leaderAlreadyOnRoster ? 1 : 0);
+  };
+
+  return {
+    get: () => state,
+    replace,
+    update,
+    hydrateTeamLeaderInfo,
+    getLeaderInfo,
+    setLeaderInfo,
+    normalizeLeader,
+    getRosterCapacity,
+    getMemberCount
+  };
+})();
+
+const state = AppState.get();
 const App = (() => {
-  let state = { started: false };
 
   // ===== DOM ELEMENTS =====
   const els = {
@@ -27,8 +124,15 @@ const App = (() => {
     uiScale: document.getElementById('uiScale'),
     totalPlayers: document.getElementById('totalPlayers'),
 
+    // Team introduction elements
+    teamIntroduction: document.getElementById('teamIntroduction'),
+    leadersGrid: document.getElementById('leadersGrid'),
+
     // Auction elements
     auction: document.getElementById('auction'),
+    auctionComplete: document.getElementById('auctionComplete'),
+    teamsLeft: document.getElementById('teamsLeft'),
+    teamsRight: document.getElementById('teamsRight'),
     currentPlayer: document.getElementById('currentPlayer'),
     remainingCount: document.getElementById('remainingCount'),
     currentImageWrap: document.getElementById('currentImageWrap'),
@@ -196,12 +300,13 @@ const App = (() => {
       }
     },
 
-    buildRoleIconsHtml(roles = []) {
+    buildRoleIconsHtml(roles = [], large = false) {
+      const iconClass = large ? 'role-icon-large' : 'role-icon';
       return roles
         .map(role => {
           const imgSrc = CONSTANTS.ROLE_IMG_MAP[role];
           return imgSrc
-            ? `<img class="role-icon" src="assets/roles/${imgSrc}" alt="${role}" title="${role}"/>`
+            ? `<img class="${iconClass}" src="assets/roles/${imgSrc}" alt="${role}" title="${role}"/>`
             : '';
         })
         .join('');
@@ -295,8 +400,54 @@ const App = (() => {
 
   function updateAuctionUI() {
     const cp = state.queue?.[state.currentIndex] || null;
-    if (els.currentPlayer) els.currentPlayer.textContent = cp ? cp.name : '모두 완료';
-    if (els.remainingCount) els.remainingCount.textContent = Math.max(0, (state.queue?.length || 0) - (state.currentIndex + (cp ? 1 : 0)));
+
+    // 현재 라운드가 끝났는지 확인
+    if (!cp && state.currentIndex >= (state.queue?.length || 0)) {
+      handleRoundEnd();
+      return;
+    }
+
+    // 라운드 정보 업데이트
+    const roundTextEl = document.getElementById('roundText');
+    if (roundTextEl && state.roundNames) {
+      roundTextEl.textContent = state.roundNames[state.round] || '본경매';
+    }
+
+    // 라운드 설명 업데이트
+    const roundDescEl = document.getElementById('roundDescription');
+    if (roundDescEl) {
+      const descriptions = {
+        1: '모든 선수를 경매합니다',
+        2: '1라운드 유찰 선수를 재경매합니다',
+        3: '2라운드 유찰 선수를 재경매합니다'
+      };
+      roundDescEl.textContent = descriptions[state.round] || '경매 진행 중';
+    }
+
+    if (els.currentPlayer) {
+      const currentPlayerNameEl = document.getElementById('currentPlayerNameAndRole');
+      if (cp) {
+        els.currentPlayer.textContent = cp.name;
+        if (currentPlayerNameEl) {
+          currentPlayerNameEl.textContent = `${cp.name} ${cp.roles ? `(${cp.roles.join('/')})` : ''}`;
+        }
+      } else {
+        els.currentPlayer.textContent = '모두 완료';
+        if (currentPlayerNameEl) {
+          currentPlayerNameEl.textContent = '라운드 완료';
+        }
+      }
+    }
+
+    if (els.remainingCount) {
+      const remaining = Math.max(0, (state.queue?.length || 0) - (state.currentIndex + (cp ? 1 : 0)));
+      els.remainingCount.textContent = remaining;
+
+      // 유찰 정보도 표시
+      if (state.roundUnsold && state.roundUnsold.length > 0) {
+        els.remainingCount.textContent += ` (유찰: ${state.roundUnsold.length})`;
+      }
+    }
     if (els.currentImageWrap) {
         if (cp && cp.image) {
             els.currentImageWrap.classList.remove('hidden');
@@ -309,33 +460,22 @@ const App = (() => {
         }
     }
     if (els.currentQuote) els.currentQuote.textContent = cp?.description || '-';
-    if (els.currentTier) els.currentTier.innerHTML = cp ? UIManager.buildTierIconHtml(cp.tier) : '-';
-    if (els.currentRoles) els.currentRoles.innerHTML = cp ? UIManager.buildRoleIconsHtml(cp.roles) : '-';
-    if (els.highestText) els.highestText.textContent = state.highest ? `${(state.teams.find(t => t.id === state.highest.teamId)?.name || '?')} - ${state.highest.amount}` : '-';
-    if (els.teams) {
-        els.teams.innerHTML = state.teams.map(t => {
-            const rosterHtml = (t.roster || []).map(p => `
-                <div class="player-row" title="${Utils.escapeHtml(p.description)}">
-                    <div>${Utils.escapeHtml(p.name)}${p.tier ? `<span class="badge tier-badge">${Utils.escapeHtml(p.tier)}</span>` : ''}</div>
-                    <div class="role role-icons">${UIManager.buildRoleIconsHtml(p.roles)}</div>
-                    <div class="cost">${p.cost}</div>
-                </div>`).join('') || `<div class="role">아직 없음</div>`;
-            return `
-                <div class="team-card">
-                    <div class="team-header">
-                        <div>
-                            <div class="team-name">${Utils.escapeHtml(t.name)}</div>
-                            ${t.leader ? `<div class="role">팀장: ${Utils.escapeHtml(t.leader)}</div>` : ''}
-                        </div>
-                        <div class="budget">잔액 ${t.budgetLeft}</div>
-                    </div>
-                    <div class="roster">${rosterHtml}</div>
-                </div>`;
-        }).join('');
+    // 티어 이미지 업데이트
+    if (els.currentTier) {
+      if (cp && cp.tier) {
+        console.log('Setting tier image for:', cp.tier);
+        els.currentTier.innerHTML = `<img src="assets/tiers/${cp.tier}.png" alt="${cp.tier}" title="${cp.tier}" class="tier-icon-large" />`;
+      } else {
+        console.log('No tier data, cp:', cp);
+        els.currentTier.textContent = '-';
+      }
     }
+    if (els.currentRoles) els.currentRoles.innerHTML = cp ? UIManager.buildRoleIconsHtml(cp.roles, true) : '-';
+    if (els.highestText) els.highestText.textContent = state.highest ? `${(state.teams.find(t => t.id === state.highest.teamId)?.name || '?')} - ${state.highest.amount}` : '-';
+    // 팀들을 좌우로 분할해서 렌더링
+    renderTeamsInSideLayout();
     if (els.bidTeam) {
-        const order = state.teamOrder || state.teams.map(t => t.id);
-        els.bidTeam.innerHTML = order.map(id => state.teams.find(t => t.id === id)).filter(Boolean).map(t => `<option value="${t.id}">${Utils.escapeHtml(t.name)} (잔액 ${t.budgetLeft})</option>`).join('');
+        updateBidTeamDropdown();
     }
 
     // 지명 버튼과 관련 요소들을 지명 모드 설정에 따라 표시/숨김
@@ -354,13 +494,209 @@ const App = (() => {
     }
   }
 
+  // ===== BID TEAM DROPDOWN =====
+  function updateBidTeamDropdown() {
+    if (!els.bidTeam) return;
+
+    const currentPlayer = state.queue?.[state.currentIndex];
+    if (!currentPlayer) {
+      els.bidTeam.innerHTML = '<option value="">선수가 없습니다</option>';
+      return;
+    }
+
+    const rosterCapacity = AppState.getRosterCapacity();
+
+    // 팀 순서 가져오기 (teamOrder 또는 기본 순서)
+    const teamOrder = state.teamOrder || state.teams.map(t => t.id);
+
+    // 팀을 순서대로 정렬
+    const orderedTeams = teamOrder.map(id => state.teams.find(t => t.id === id)).filter(Boolean);
+
+    // 입찰 가능한 팀 필터링
+    const eligibleTeams = orderedTeams.filter(team => {
+      // 1. 로스터가 5명 미만인지 확인
+      const rosterCount = AppState.getMemberCount(team);
+      if (rosterCount >= rosterCapacity) {
+        return false;
+      }
+
+
+      // 2. 최소 입찰 금액 이상의 예산이 있는지 확인
+      const openingMin = state.openingMin || 5;
+      const minNextBid = state.highest ? (state.highest.amount + (state.bidStep || 5)) : openingMin;
+      if (team.budgetLeft < minNextBid) {
+        return false;
+      }
+
+      // 3. 포지션 중복 방지 설정이 켜져있다면 포지션 충돌 확인
+      if (state.enforceRoles && AuctionManager._isRoleConflict(currentPlayer, team)) {
+        return false;
+      }
+
+      return true;
+    });
+
+    // 옵션 생성
+    if (eligibleTeams.length === 0) {
+      els.bidTeam.innerHTML = '<option value="">입찰 가능한 팀이 없습니다</option>';
+    } else {
+      const options = eligibleTeams.map(team => {
+        const rosterCount = AppState.getMemberCount(team);
+        const status = `잔액 ${team.budgetLeft.toLocaleString()} (${rosterCount}/${rosterCapacity}명)`;
+
+        return `<option value="${team.id}">${Utils.escapeHtml(team.name)} - ${status}</option>`;
+      }).join('');
+
+      els.bidTeam.innerHTML = options;
+    }
+
+    // 첫 번째 유효한 팀을 기본 선택으로 설정
+    if (eligibleTeams.length > 0) {
+      els.bidTeam.value = eligibleTeams[0].id;
+    }
+
+    // 입찰 금액 기본값 설정
+    updateBidAmount();
+  }
+
+  function updateBidAmount() {
+    const bidAmountEl = document.getElementById('bidAmount');
+    if (!bidAmountEl) return;
+
+    const openingMin = state.openingMin || 5;
+    const bidStep = state.bidStep || 5;
+    const minNextBid = state.highest ? (state.highest.amount + bidStep) : openingMin;
+
+    bidAmountEl.value = minNextBid;
+    bidAmountEl.min = minNextBid;
+    bidAmountEl.step = bidStep;
+  }
+
+  // ===== TEAM LAYOUT RENDERING =====
+  function renderTeamsInSideLayout() {
+    if (!els.teamsLeft || !els.teamsRight || !state.teams) return;
+
+    AppState.hydrateTeamLeaderInfo();
+
+    const midpoint = Math.ceil(state.teams.length / 2);
+    const leftTeams = state.teams.slice(0, midpoint);
+    const rightTeams = state.teams.slice(midpoint);
+
+    els.teamsLeft.innerHTML = leftTeams.map(renderCompactTeamCard).join('');
+    els.teamsRight.innerHTML = rightTeams.map(renderCompactTeamCard).join('');
+  }
+
+  function renderCompactTeamCard(team) {
+    const members = [];
+    const rosterCapacity = AppState.getRosterCapacity();
+    const rosterList = Array.isArray(team?.roster) ? team.roster : [];
+    const leaderName = team?.leader;
+    const leaderInfo = leaderName ? AppState.getLeaderInfo(leaderName) || team.leaderInfo || null : null;
+
+    if (leaderName) {
+      const info = leaderInfo || AppState.normalizeLeader({
+        ...rosterList.find((player) => player?.name === leaderName),
+        name: leaderName
+      });
+      AppState.setLeaderInfo(leaderName, info);
+      members.push({
+        name: info.name || leaderName,
+        cost: '-',
+        isLeader: true,
+        image: info.image || null,
+        description: info.description || '',
+        tier: info.tier || null,
+        roles: Array.isArray(info.roles) && info.roles.length
+          ? info.roles
+          : (info.role ? [info.role] : [])
+      });
+    }
+
+    rosterList.forEach((player) => {
+      if (!player) return;
+      members.push({
+        name: player.name || '-',
+        cost: typeof player.cost === 'number' ? player.cost : (player.cost ?? '-'),
+        isLeader: false,
+        image: player.image || null,
+        description: player.description || '',
+        tier: player.tier || null,
+        roles: Array.isArray(player.roles) && player.roles.length
+          ? player.roles
+          : (player.role ? [player.role] : [])
+      });
+    });
+
+    const emptySlots = Math.max(0, rosterCapacity - members.length);
+
+    const membersHtml = members.map((member) => {
+      const safeName = Utils.escapeHtml(member.name || '');
+      const safeDescription = Utils.escapeHtml(member.description || '');
+      const roles = Array.isArray(member.roles) ? member.roles.filter(Boolean) : [];
+      const rolesIcons = roles.length ? UIManager.buildRoleIconsHtml(roles, true) : '';
+      const rolesLabel = roles.length ? Utils.escapeHtml(roles.join('/')) : '-';
+      const rolesMarkup = `<span class=\"member-roles${roles.length ? '' : ' member-roles-empty'}\">${rolesIcons}${roles.length ? `<span class=\"member-roles-label\">${rolesLabel}</span>` : '<span class=\"member-roles-label\">-</span>'}</span>`;
+      const tierMarkup = member.tier
+        ? `<span class=\"member-tier\">${UIManager.buildTierIconHtml(member.tier)}<span class=\"member-tier-label\">${Utils.escapeHtml(member.tier)}</span></span>`
+        : '<span class=\"member-tier member-tier-empty\">-</span>';
+      const costDisplay = typeof member.cost === 'number' ? member.cost.toLocaleString() : (member.cost ?? '-');
+
+      return `
+      <div class=\"member-item-compact\" title=\"${safeDescription}\">
+        ${member.image ? `<img class=\"member-image-compact\" src=\"${member.image}\" alt=\"${safeName}\" />` : '<div class=\"member-image-placeholder\"></div>'}
+        <div class=\"member-info\">
+          <span class=\"member-name-compact ${member.isLeader ? 'leader-name' : ''}\">${safeName}</span>
+          <div class=\"member-meta\">
+            ${tierMarkup}
+            <span class=\"member-meta-sep\">|</span>
+            ${rolesMarkup}
+          </div>
+        </div>
+        <span class=\"member-cost-compact\">${costDisplay}</span>
+      </div>
+      `;
+    }).join('');
+
+    const emptyHtml = Array.from({ length: emptySlots }, () => `
+      <div class=\"member-item-compact\">
+        <div class=\"member-image-placeholder\"></div>
+        <div class=\"member-info\">
+          <span class=\"empty-slot-compact\">빈 자리</span>
+          <div class=\"member-meta\">
+            <span class=\"member-tier member-tier-empty\">-</span>
+            <span class=\"member-meta-sep\">|</span>
+            <span class=\"member-roles member-roles-empty\"><span class=\"member-roles-label\">-</span></span>
+          </div>
+        </div>
+        <span class=\"empty-cost-compact\">-</span>
+      </div>
+    `).join('');
+
+    const isHighestBidder = state.highest && state.highest.teamId === team.id;
+    const highlightClass = isHighestBidder ? 'highlighted' : '';
+
+    return `
+      <div class=\"team-card-compact ${highlightClass}\" data-team-id=\"${team.id}\">
+        <div class=\"team-header-compact\">
+          <div class=\"team-name-compact\">${Utils.escapeHtml(team.name)}</div>
+          <div class=\"budget-compact\">${team.budgetLeft.toLocaleString()}</div>
+        </div>
+        <div class=\"roster-compact\">
+          ${membersHtml}
+          ${emptyHtml}
+        </div>
+      </div>
+    `;
+  }
+
   // ===== DATA MANAGEMENT =====
   const DataManager = {
     collectPlayersFromCards() {
       const players = [];
       const leaders = [];
+      const leaderDetails = {};
 
-      if (!els.playerCards) return { players, leaders };
+      if (!els.playerCards) return { players, leaders, leaderDetails };
 
       els.playerCards.querySelectorAll('.player-card').forEach((card) => {
         const name = card.querySelector('.pc-input-name')?.value?.trim() || '';
@@ -389,10 +725,13 @@ const App = (() => {
           description
         });
 
-        if (isLeader) leaders.push(name);
+        if (isLeader) {
+          leaders.push(name);
+          leaderDetails[name] = AppState.normalizeLeader({ name, roles, role: roles[0] || null, tier, image, description });
+        }
       });
 
-      return { players, leaders };
+      return { players, leaders, leaderDetails };
     },
 
     saveState() {
@@ -407,7 +746,9 @@ const App = (() => {
       try {
         const saved = localStorage.getItem(CONSTANTS.LS_KEY);
         if (saved) {
-          state = JSON.parse(saved);
+          const restoredState = JSON.parse(saved);
+          AppState.replace(restoredState);
+          AppState.hydrateTeamLeaderInfo();
           els.config.classList.add('hidden');
           els.playersSection.classList.add('hidden');
           els.auction.classList.remove('hidden');
@@ -432,22 +773,8 @@ const App = (() => {
       const amount = Math.max(openingMin, Number(amountInput?.value || openingMin));
 
       const team = state.teams?.find(t => t.id === teamId);
-      if (!team) return;
-
-      // Validation checks
-      if (team.roster.length >= (state.rosterSize || 5)) {
-        alert('해당 팀은 더 이상 선수를 가질 수 없습니다.');
-        return;
-      }
-
-      if (amount > team.budgetLeft) {
-        alert('예산 초과입니다.');
-        return;
-      }
-
-      // Role enforcement check
-      if (this._isRoleConflict(currentPlayer, team)) {
-        alert('해당 선수의 가능한 포지션이 모두 중복입니다.');
+      if (!team) {
+        alert('유효하지 않은 팀입니다.');
         return;
       }
 
@@ -538,7 +865,8 @@ const App = (() => {
       prevHighest: state.highest ? { ...state.highest } : null
     });
 
-    state.unsoldCollector.push(currentPlayer);
+    // 현재 라운드의 유찰 선수로 추가
+    state.roundUnsold.push(currentPlayer);
     state.currentIndex = (state.currentIndex || 0) + 1;
     state.highest = null;
     updateAuctionUI();
@@ -566,7 +894,7 @@ const App = (() => {
         break;
 
       case 'skip':
-        state.unsoldCollector.pop();
+        state.roundUnsold.pop();
         state.currentIndex = lastAction.index;
         state.highest = lastAction.prevHighest ? { ...lastAction.prevHighest } : null;
         break;
@@ -576,18 +904,123 @@ const App = (() => {
     DataManager.saveState();
   };
 
+  // ===== ROUND MANAGEMENT =====
+  function handleRoundEnd() {
+    console.log(`라운드 ${state.round} 종료, 유찰 선수: ${state.roundUnsold.length}명`);
+
+    if (state.round === 1) {
+      // 본경매 종료 -> 유찰라운드 1 시작
+      if (state.roundUnsold.length > 0) {
+        startUnsoldRound(2);
+      } else {
+        // 유찰 선수가 없으면 바로 완료
+        showAuctionComplete();
+      }
+    } else if (state.round === 2) {
+      // 유찰라운드 1 종료 -> 유찰라운드 2 시작
+      if (state.roundUnsold.length > 0) {
+        startUnsoldRound(3);
+      } else {
+        // 유찰 선수가 없으면 완료
+        showAuctionComplete();
+      }
+    } else if (state.round === 3) {
+      // 유찰라운드 2 종료 -> 랜덤 배정
+      if (state.roundUnsold.length > 0) {
+        performRandomAssignment();
+      }
+      showAuctionComplete();
+    }
+  }
+
+  function startUnsoldRound(roundNumber) {
+    console.log(`유찰라운드 ${roundNumber - 1} 시작, 대상 선수: ${state.roundUnsold.length}명`);
+
+    // 유찰된 선수들로 새 큐 구성
+    state.queue = [...state.roundUnsold];
+    state.roundUnsold = []; // 새 라운드 시작이므로 초기화
+    state.currentIndex = 0;
+    state.round = roundNumber;
+    state.highest = null;
+
+    // 선수 순서 랜덤화 (선택사항)
+    if (state.randomizeOrder) {
+      state.queue = Utils.shuffle(state.queue);
+    }
+
+    updateAuctionUI();
+    DataManager.saveState();
+
+    // 라운드 시작 알림
+    alert(`${state.roundNames[state.round]} 시작! 대상 선수: ${state.queue.length}명`);
+  }
+
+  function performRandomAssignment() {
+    console.log(`랜덤 배정 시작, 대상 선수: ${state.roundUnsold.length}명`);
+
+    if (state.roundUnsold.length === 0) return;
+
+    // 5명 미만인 팀들 찾기
+    const incompleteTeams = state.teams.filter(team => (team.roster?.length || 0) < 5);
+
+    if (incompleteTeams.length === 0) {
+      // 모든 팀이 5명이면 unsoldCollector에 추가
+      state.unsoldCollector.push(...state.roundUnsold);
+      state.roundUnsold = [];
+      return;
+    }
+
+    // 랜덤 배정
+    const playersToAssign = [...state.roundUnsold];
+    state.roundUnsold = [];
+
+    playersToAssign.forEach(player => {
+      const availableTeams = state.teams.filter(team => {
+        const currentSize = team.roster?.length || 0;
+        if (currentSize >= 5) return false;
+
+        // 포지션 중복 체크 (설정이 켜져있는 경우)
+        if (state.enforceRoles) {
+          return !AuctionManager._isRoleConflict(player, team);
+        }
+
+        return true;
+      });
+
+      if (availableTeams.length > 0) {
+        // 랜덤하게 팀 선택
+        const randomTeam = availableTeams[Math.floor(Math.random() * availableTeams.length)];
+        randomTeam.roster.push({ ...player, cost: 0 }); // 랜덤 배정은 비용 0
+
+        console.log(`${player.name} -> ${randomTeam.name} (랜덤 배정)`);
+      } else {
+        // 배정할 수 있는 팀이 없으면 완전 미판매
+        state.unsoldCollector.push(player);
+      }
+    });
+
+    // 랜덤 배정 완료 알림
+    if (playersToAssign.length > 0) {
+      alert(`랜덤 배정 완료! ${playersToAssign.length}명의 선수가 배정되었습니다.`);
+    }
+  }
+
   function startAuction() {
+    // 팀장 소개 페이지로 먼저 이동
+    return showTeamIntroduction();
+  }
+
+  function startAuctionFromIntro() {
     const teamCount = Math.max(1, Math.ceil(parseInt(els.totalPlayers.value || '20', 10) / 5));
     const gathered = DataManager.collectPlayersFromCards();
-    if (!gathered.players.length) return alert('선수 카드를 입력해주세요.');
-    if (gathered.leaders.length !== teamCount) return alert(`팀장 수가 맞지 않습니다. (필요: ${teamCount}명, 선택됨: ${gathered.leaders.length}명)`);
+    const leaderDetailsMap = gathered.leaderDetails || {};
 
     const useLeadersAsTeamNames = document.getElementById('useLeadersAsTeamNames').checked;
-    
+
     const teamsData = [];
     for (let i = 0; i < teamCount; i++) {
-        const name = useLeadersAsTeamNames 
-            ? gathered.leaders[i] 
+        const name = useLeadersAsTeamNames
+            ? gathered.leaders[i]
             : document.getElementById(`team_name_${i}`)?.value || `팀 ${i + 1}`;
         const budget = Math.max(1, Number(document.getElementById(`team_budget_${i}`)?.value || 1000));
         teamsData.push({ name, budget });
@@ -598,22 +1031,29 @@ const App = (() => {
     const baseOrder = Array.from({ length: teamCount }, (_, i) => i);
     const randomizeTeamOrder = document.getElementById('randomizeOrder').checked;
 
-    state = {
+    AppState.replace({
         started: true,
         enforceRoles: document.getElementById('enforceRoles').checked,
         rosterSize: 5,
         randomizeOrder: document.getElementById('randomizeOrder').checked,
         randomizeTeamOrder,
         nominationMode: document.getElementById('nominationMode').checked,
-        round: 0,
+        round: 1, // 1: 본경매, 2: 유찰 라운드 1, 3: 유찰 라운드 2, 4: 종료
+        roundNames: ['설정', '본경매', '유찰 라운드 1', '유찰 라운드 2', '종료'],
         reauctionMax: 2,
-        teams: teamsData.map((teamData, id) => ({ 
-            id, 
-            name: teamData.name, 
-            leader: gathered.leaders[id] || null, 
-            budgetLeft: teamData.budget, 
-            roster: [] 
-        })),
+        teams: teamsData.map((teamData, id) => {
+            const leaderName = gathered.leaders[id] || null;
+            return {
+                id,
+                name: teamData.name,
+                leader: leaderName,
+                leaderInfo: leaderName ? leaderDetailsMap[leaderName] || null : null,
+                budgetLeft: teamData.budget,
+                roster: []
+            };
+        }),
+        leaderDetails: leaderDetailsMap,
+        originalQueue: document.getElementById('randomizeOrder').checked ? Utils.shuffle(filteredPlayers) : filteredPlayers,
         queue: document.getElementById('randomizeOrder').checked ? Utils.shuffle(filteredPlayers) : filteredPlayers,
         leaders: gathered.leaders,
         teamOrder: randomizeTeamOrder ? Utils.shuffle(baseOrder) : baseOrder,
@@ -621,10 +1061,12 @@ const App = (() => {
         highest: null,
         history: [],
         unsoldCollector: [],
-    };
+        roundUnsold: [], // 현재 라운드에서 유찰된 선수들
+    });
 
-    els.config.classList.add('hidden');
-    els.playersSection.classList.add('hidden');
+    AppState.hydrateTeamLeaderInfo();
+
+  els.teamIntroduction.classList.add('hidden');
     els.auction.classList.remove('hidden');
     updateAuctionUI();
     DataManager.saveState();
@@ -742,6 +1184,22 @@ const App = (() => {
     if (exportCsvBtn) exportCsvBtn.addEventListener('click', exportToCSV);
     if (exportJsonBtn) exportJsonBtn.addEventListener('click', exportToJSON);
 
+    // Auction complete buttons
+    const exportFinalCsvBtn = document.getElementById('exportFinalCsvBtn');
+    const exportFinalJsonBtn = document.getElementById('exportFinalJsonBtn');
+    const startNewAuctionBtn = document.getElementById('startNewAuctionBtn');
+
+    if (exportFinalCsvBtn) exportFinalCsvBtn.addEventListener('click', exportToCSV);
+    if (exportFinalJsonBtn) exportFinalJsonBtn.addEventListener('click', exportToJSON);
+    if (startNewAuctionBtn) startNewAuctionBtn.addEventListener('click', startNewAuction);
+
+    // Team introduction buttons
+    const backToConfigBtn = document.getElementById('backToConfigBtn');
+    const startAuctionFromIntroBtn = document.getElementById('startAuctionFromIntroBtn');
+
+    if (backToConfigBtn) backToConfigBtn.addEventListener('click', backToConfig);
+    if (startAuctionFromIntroBtn) startAuctionFromIntroBtn.addEventListener('click', startAuctionFromIntro);
+
 
     // Player cards
     els.playerCards.addEventListener('click', (e) => {
@@ -820,8 +1278,19 @@ const App = (() => {
     document.getElementById('skipBtn').addEventListener('click', (e) => { e.preventDefault(); AuctionManager.nextPlayer(); });
     document.getElementById('undoBtn').addEventListener('click', (e) => { e.preventDefault(); AuctionManager.undo(); });
 
+    // Bid team selection change event
+    const bidTeamSelect = document.getElementById('bidTeam');
+    if (bidTeamSelect) {
+      bidTeamSelect.addEventListener('change', () => {
+        updateBidAmount();
+      });
+    }
+
     // Timer and Sound controls
     bindTimerEvents();
+
+    // Debug buttons
+    bindDebugEvents();
 
     // Sidebar Toggle
     const sidebarToggle = document.getElementById('sidebarToggle');
@@ -877,6 +1346,531 @@ const App = (() => {
         TimerManager.stop();
       });
     }
+  }
+
+  function bindDebugEvents() {
+    // Debug panel toggle
+    const debugToggle = document.getElementById('debugToggle');
+    const debugButtons = document.getElementById('debugButtons');
+
+    if (debugToggle && debugButtons) {
+      debugToggle.addEventListener('click', () => {
+        debugButtons.classList.toggle('hidden');
+      });
+    }
+
+    // Debug navigation buttons
+    const debugGoToConfigBtn = document.getElementById('debugGoToConfig');
+    const debugGoToIntroBtn = document.getElementById('debugGoToIntro');
+    const debugGoToAuctionBtn = document.getElementById('debugGoToAuction');
+    const debugGoToCompleteBtn = document.getElementById('debugGoToComplete');
+    const debugCreateSampleDataBtn = document.getElementById('debugCreateSampleData');
+
+    if (debugGoToConfigBtn) debugGoToConfigBtn.addEventListener('click', debugGoToConfig);
+    if (debugGoToIntroBtn) debugGoToIntroBtn.addEventListener('click', debugGoToIntro);
+    if (debugGoToAuctionBtn) debugGoToAuctionBtn.addEventListener('click', debugGoToAuction);
+    if (debugGoToCompleteBtn) debugGoToCompleteBtn.addEventListener('click', debugGoToComplete);
+    if (debugCreateSampleDataBtn) debugCreateSampleDataBtn.addEventListener('click', debugCreateSampleData);
+  }
+
+  // ===== AUCTION COMPLETE FUNCTIONS =====
+  function showAuctionComplete() {
+    els.auction.classList.add('hidden');
+    els.auctionComplete.classList.remove('hidden');
+    renderAuctionCompleteUI();
+  }
+
+  function renderAuctionCompleteUI() {
+    console.log('Rendering auction complete UI with state:', state);
+
+    if (!state.teams || state.teams.length === 0) {
+      console.warn('No teams data available for auction complete');
+      alert('팀 데이터가 없습니다.');
+      return;
+    }
+
+    // 통계 계산
+    const stats = calculateAuctionStats();
+    console.log('Calculated stats:', stats);
+
+    // 통계 표시
+    document.getElementById('totalPlayersCount').textContent = stats.totalSoldPlayers;
+    document.getElementById('averagePrice').textContent = stats.averagePrice.toLocaleString();
+    document.getElementById('highestPrice').textContent = stats.highestPrice.toLocaleString();
+
+    // 팀별 최종 구성 표시
+    renderFinalTeams();
+
+    // 미판매 선수 표시
+    renderUnsoldPlayers();
+  }
+
+  function calculateAuctionStats() {
+    const allSoldPlayers = [];
+    state.teams.forEach(team => {
+      if (team.roster) {
+        allSoldPlayers.push(...team.roster);
+      }
+    });
+
+    const totalSoldPlayers = allSoldPlayers.length;
+    const totalCost = allSoldPlayers.reduce((sum, player) => sum + (player.cost || 0), 0);
+    const averagePrice = totalSoldPlayers > 0 ? Math.round(totalCost / totalSoldPlayers) : 0;
+    const highestPrice = allSoldPlayers.reduce((max, player) => Math.max(max, player.cost || 0), 0);
+
+    return { totalSoldPlayers, averagePrice, highestPrice };
+  }
+
+  function renderFinalTeams() {
+    const finalTeamsEl = document.getElementById('finalTeams');
+    if (!finalTeamsEl) {
+      console.error('finalTeams element not found');
+      alert('finalTeams 엘리먼트를 찾을 수 없습니다.');
+      return;
+    }
+
+    console.log('Rendering final teams, state.teams:', state.teams);
+
+    const teamsHtml = state.teams.map(team => {
+      const rosterHtml = (team.roster || []).map(player => `
+        <div class="final-player-row ${player.cost === 0 ? 'random-assigned' : ''}">
+          ${player.image ? `<img class="final-player-image" src="${player.image}" alt="${Utils.escapeHtml(player.name)}" />` : '<div class="final-player-image-placeholder"></div>'}
+          <span class="final-player-name ${player.name === team.leader ? 'leader-name' : ''}">${Utils.escapeHtml(player.name)}</span>
+          ${player.tier ? `<img class="final-player-tier-image" src="assets/tiers/${player.tier}.png" alt="${player.tier}" title="${player.tier}" />` : '<div class="final-player-tier-placeholder"></div>'}
+          <div class="final-player-roles">
+            ${UIManager.buildRoleIconsHtml(player.roles)}
+          </div>
+          <div class="final-player-cost">${player.cost === 0 ? '랜덤배정' : (player.cost || 0).toLocaleString()}</div>
+          ${player.cost === 0 ? '<span class="random-badge">랜덤</span>' : ''}
+        </div>
+      `).join('');
+
+      const emptySlots = Math.max(0, 5 - (team.roster?.length || 0));
+      const emptyHtml = Array.from({ length: emptySlots }, () => `
+        <div class="final-player-row" style="opacity: 0.3;">
+          <div class="final-player-name">빈 자리</div>
+          <div class="final-player-roles">-</div>
+          <div class="final-player-cost">-</div>
+        </div>
+      `).join('');
+
+      return `
+        <div class="final-team-card">
+          <div class="final-team-header">
+            <div>
+              <div class="final-team-name">${Utils.escapeHtml(team.name)}</div>
+              ${team.leader ? `<div class="final-team-leader">팀장: ${Utils.escapeHtml(team.leader)}</div>` : ''}
+            </div>
+            <div class="final-budget">잔액: ${team.budgetLeft.toLocaleString()}</div>
+          </div>
+          <div class="final-roster">
+            ${rosterHtml}
+            ${emptyHtml}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    finalTeamsEl.innerHTML = teamsHtml;
+  }
+
+  function renderUnsoldPlayers() {
+    const unsoldSection = document.getElementById('unsoldPlayersSection');
+    const unsoldList = document.getElementById('unsoldPlayersList');
+
+    if (!unsoldSection || !unsoldList) return;
+
+    if (state.unsoldCollector && state.unsoldCollector.length > 0) {
+      unsoldSection.classList.remove('hidden');
+
+      const unsoldHtml = state.unsoldCollector.map(player => `
+        <div class="unsold-player">
+          <div class="unsold-player-name">${Utils.escapeHtml(player.name)}</div>
+          <div class="unsold-player-info">
+            ${player.tier ? `${player.tier} • ` : ''}
+            ${player.roles ? player.roles.join('/') : '-'}
+          </div>
+        </div>
+      `).join('');
+
+      unsoldList.innerHTML = unsoldHtml;
+    } else {
+      unsoldSection.classList.add('hidden');
+    }
+  }
+
+  function startNewAuction() {
+    if (confirm('새 경매를 시작하시겠습니까? 현재 데이터가 모두 삭제됩니다.')) {
+      localStorage.removeItem(CONSTANTS.LS_KEY);
+      window.location.reload();
+    }
+  }
+
+  // ===== TEAM INTRODUCTION FUNCTIONS =====
+  function showTeamIntroduction() {
+    const teamCount = Math.max(1, Math.ceil(parseInt(els.totalPlayers.value || '20', 10) / 5));
+    const gathered = DataManager.collectPlayersFromCards();
+
+    if (!gathered.players.length) {
+      alert('선수 카드를 입력해주세요.');
+      return false;
+    }
+
+    if (gathered.leaders.length !== teamCount) {
+      alert(`팀장 수가 맞지 않습니다. (필요: ${teamCount}명, 선택됨: ${gathered.leaders.length}명)`);
+      return false;
+    }
+
+    // 설정에서 팀 데이터 수집
+    const teamsData = [];
+    const useLeadersAsTeamNames = document.getElementById('useLeadersAsTeamNames').checked;
+
+    for (let i = 0; i < teamCount; i++) {
+      const name = useLeadersAsTeamNames
+        ? gathered.leaders[i]
+        : document.getElementById(`team_name_${i}`)?.value || `팀 ${i + 1}`;
+      const budget = Math.max(1, Number(document.getElementById(`team_budget_${i}`)?.value || 1000));
+      teamsData.push({ name, budget, leader: gathered.leaders[i] });
+    }
+
+    // 페이지 전환
+    els.config.classList.add('hidden');
+    els.playersSection.classList.add('hidden');
+    els.teamIntroduction.classList.remove('hidden');
+
+    // 팀장 정보 렌더링
+    renderTeamIntroduction(gathered, teamsData);
+
+    return true;
+  }
+
+  function renderTeamIntroduction(gathered, teamsData) {
+    // 팀장 카드들 렌더링
+    renderLeaderCards(gathered, teamsData);
+
+    // 경매 규칙 업데이트
+    updateAuctionRules();
+  }
+
+  function renderLeaderCards(gathered, teamsData) {
+    if (!els.leadersGrid) return;
+
+    const leaderCards = teamsData.map((team, index) => {
+      const leaderName = team.leader;
+      const leaderData = gathered.players.find(p => p.name === leaderName) || {};
+
+      const imageHtml = leaderData.image
+        ? `<img src="${Utils.escapeHtml(leaderData.image)}" alt="${Utils.escapeHtml(leaderName)}" />`
+        : `<div class="no-image">이미지 없음</div>`;
+
+      const tierHtml = leaderData.tier
+        ? `<div class="leader-tier">${UIManager.buildTierIconHtml(leaderData.tier)} ${leaderData.tier}</div>`
+        : '<div class="leader-tier">티어 미설정</div>';
+
+      const rolesHtml = leaderData.roles && leaderData.roles.length > 0
+        ? `<div class="leader-roles">${UIManager.buildRoleIconsHtml(leaderData.roles)} ${leaderData.roles.join('/')}</div>`
+        : '<div class="leader-roles">포지션 미설정</div>';
+
+      return `
+        <div class="leader-card">
+          <div class="leader-image-frame ${leaderData.image ? '' : 'no-image'}">
+            ${imageHtml}
+          </div>
+
+          <div class="leader-name">${Utils.escapeHtml(team.name)}</div>
+          <div class="leader-subtitle">팀장: ${Utils.escapeHtml(leaderName)}</div>
+
+          <div class="leader-info">
+            ${tierHtml}
+            ${rolesHtml}
+          </div>
+
+          <div class="leader-budget">
+            <div class="budget-label">팀 예산</div>
+            <div class="budget-amount">${team.budget.toLocaleString()}포인트</div>
+          </div>
+
+          <div class="leader-quote">
+            ${leaderData.description ? `"${Utils.escapeHtml(leaderData.description)}"` : '각오 한마디를 남겨보세요!'}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    els.leadersGrid.innerHTML = leaderCards;
+  }
+
+  function updateAuctionRules() {
+    // 경매 순서 규칙
+    const randomizeOrder = document.getElementById('randomizeOrder').checked;
+    const auctionOrderRuleEl = document.getElementById('auctionOrderRule');
+    if (auctionOrderRuleEl) {
+      auctionOrderRuleEl.textContent = randomizeOrder ? '선수 순서를 무작위로 섞습니다' : '선수 순서는 카드 순서대로 진행됩니다';
+    }
+
+    // 포지션 제한 규칙
+    const enforceRoles = document.getElementById('enforceRoles').checked;
+    const roleEnforcementTextEl = document.getElementById('roleEnforcementText');
+    if (roleEnforcementTextEl) {
+      roleEnforcementTextEl.textContent = enforceRoles ? '같은 포지션 중복 불가' : '포지션 중복 제한 없음';
+    }
+  }
+
+  function backToConfig() {
+    els.teamIntroduction.classList.add('hidden');
+    els.config.classList.remove('hidden');
+    els.playersSection.classList.remove('hidden');
+  }
+
+  // ===== DEBUG FUNCTIONS =====
+  function debugGoToConfig() {
+    createAndApplySampleData();
+    hideAllSections();
+    els.config.classList.remove('hidden');
+    els.playersSection.classList.remove('hidden');
+  }
+
+  function debugGoToIntro() {
+    createAndApplySampleData();
+    // 팀장 소개 페이지로 이동
+    showTeamIntroduction();
+  }
+
+  function debugGoToAuction() {
+    try {
+      createAndApplySampleData();
+      // 경매 시작 시뮬레이션
+      startAuctionFromIntro();
+    } catch (error) {
+      console.error('Debug auction error:', error);
+      alert('본경매 페이지 로드 중 오류가 발생했습니다.');
+    }
+  }
+
+  function debugGoToComplete() {
+    try {
+      // 샘플 데이터 생성
+      createAndApplySampleData();
+
+      // 경매 상태 직접 설정
+      state.started = true;
+      state.teams = [
+        {
+          id: 0,
+          name: 'Gen.G',
+          leader: 'Chovy',
+          budgetLeft: 0,
+          roster: [
+            { name: 'Chovy', roles: ['Mid'], tier: 'Challenger', description: 'Gen.G 미드라이너', cost: 35 },
+            { name: 'Kiin', roles: ['Top'], tier: 'Challenger', description: 'Gen.G 탑라이너', cost: 30 },
+            { name: 'Canyon', roles: ['Jungle'], tier: 'Challenger', description: 'Gen.G 정글러', cost: 25 },
+            { name: 'Peyz', roles: ['ADC'], tier: 'Master', description: 'Gen.G 원딜', cost: 20 },
+            { name: 'Lehends', roles: ['Support'], tier: 'Master', description: 'Gen.G 서포터', cost: 15 }
+          ]
+        },
+        {
+          id: 1,
+          name: '한화생명',
+          leader: 'Zeka',
+          budgetLeft: 0,
+          roster: [
+            { name: 'Zeka', roles: ['Mid'], tier: 'Grandmaster', description: '한화생명 미드라이너', cost: 30 },
+            { name: 'Zeus', roles: ['Top'], tier: 'Challenger', description: '한화생명 탑라이너', cost: 30 },
+            { name: 'Peanut', roles: ['Jungle'], tier: 'Grandmaster', description: '한화생명 정글러', cost: 25 },
+            { name: 'Viper', roles: ['ADC'], tier: 'Challenger', description: '한화생명 원딜', cost: 35 },
+            { name: 'Delight', roles: ['Support'], tier: 'Master', description: '한화생명 서포터', cost: 15 }
+          ]
+        },
+        {
+          id: 2,
+          name: 'T1',
+          leader: 'Faker',
+          budgetLeft: 0,
+          roster: [
+            { name: 'Faker', roles: ['Mid'], tier: 'Challenger', description: '전설의 미드라이너', cost: 40 },
+            { name: 'Doran', roles: ['Top'], tier: 'Grandmaster', description: 'T1 탑라이너', cost: 25 },
+            { name: 'Oner', roles: ['Jungle'], tier: 'Grandmaster', description: 'T1 정글러', cost: 25 },
+            { name: 'Gumayusi', roles: ['ADC'], tier: 'Master', description: 'T1 원딜', cost: 20 },
+            { name: 'Keria', roles: ['Support'], tier: 'Master', description: 'T1 서포터', cost: 15 }
+          ]
+        },
+        {
+          id: 3,
+          name: 'KT',
+          leader: 'Bdd',
+          budgetLeft: 30,
+          roster: [
+            { name: 'Bdd', roles: ['Mid'], tier: 'Master', description: 'KT 미드라이너', cost: 25 },
+            { name: 'Sword', roles: ['Top'], tier: 'Master', description: 'KT 탑라이너', cost: 15 },
+            { name: 'Cuzz', roles: ['Jungle'], tier: 'Master', description: 'KT 정글러', cost: 20 },
+            { name: 'Smash', roles: ['ADC'], tier: 'Master', description: 'KT 원딜', cost: 15 },
+            { name: 'Beryl', roles: ['Support'], tier: 'Master', description: 'KT 서포터', cost: 20 }
+          ]
+        }
+      ];
+
+      AppState.update({ leaderDetails: {} });
+      AppState.hydrateTeamLeaderInfo();
+
+      // 경매 완료 상태 설정
+      state.round = 4;
+      state.currentIndex = -1;
+      state.queue = [];
+
+      // 화면 전환 (직접 처리)
+      els.config.classList.add('hidden');
+      els.playersSection.classList.add('hidden');
+      els.teamIntroduction.classList.add('hidden');
+      els.auction.classList.add('hidden');
+      els.auctionComplete.classList.remove('hidden');
+      showAuctionComplete();
+
+    } catch (error) {
+      console.error('Debug complete error:', error);
+      alert('경매 결과 페이지 로드 중 오류가 발생했습니다: ' + error.message);
+    }
+  }
+
+  function createMockAuctionResults() {
+    // 먼저 경매를 시작하여 기본 상태 설정
+    startAuctionFromIntro();
+
+    // 각 팀에 직접 선수 배정 (간단한 방식)
+    const teamRosters = [
+      // Gen.G 팀 (팀장: Chovy)
+      [
+        { name: 'Chovy', roles: ['Mid'], tier: 'Challenger', description: 'Gen.G 미드라이너', cost: 35 },
+        { name: 'Kiin', roles: ['Top'], tier: 'Challenger', description: 'Gen.G 탑라이너', cost: 30 },
+        { name: 'Canyon', roles: ['Jungle'], tier: 'Challenger', description: 'Gen.G 정글러', cost: 25 },
+        { name: 'Peyz', roles: ['ADC'], tier: 'Master', description: 'Gen.G 원딜', cost: 20 },
+        { name: 'Lehends', roles: ['Support'], tier: 'Master', description: 'Gen.G 서포터', cost: 15 }
+      ],
+      // 한화생명 팀 (팀장: Zeka)
+      [
+        { name: 'Zeka', roles: ['Mid'], tier: 'Grandmaster', description: '한화생명 미드라이너', cost: 30 },
+        { name: 'Zeus', roles: ['Top'], tier: 'Challenger', description: '한화생명 탑라이너', cost: 30 },
+        { name: 'Peanut', roles: ['Jungle'], tier: 'Grandmaster', description: '한화생명 정글러', cost: 25 },
+        { name: 'Viper', roles: ['ADC'], tier: 'Challenger', description: '한화생명 원딜', cost: 35 },
+        { name: 'Delight', roles: ['Support'], tier: 'Master', description: '한화생명 서포터', cost: 15 }
+      ],
+      // T1 팀 (팀장: Faker)
+      [
+        { name: 'Faker', roles: ['Mid'], tier: 'Challenger', description: '전설의 미드라이너', cost: 40 },
+        { name: 'Doran', roles: ['Top'], tier: 'Grandmaster', description: 'T1 탑라이너', cost: 25 },
+        { name: 'Oner', roles: ['Jungle'], tier: 'Grandmaster', description: 'T1 정글러', cost: 25 },
+        { name: 'Gumayusi', roles: ['ADC'], tier: 'Master', description: 'T1 원딜', cost: 20 },
+        { name: 'Keria', roles: ['Support'], tier: 'Master', description: 'T1 서포터', cost: 15 }
+      ],
+      // KT 팀 (팀장: Bdd)
+      [
+        { name: 'Bdd', roles: ['Mid'], tier: 'Master', description: 'KT 미드라이너', cost: 25 },
+        { name: 'Sword', roles: ['Top'], tier: 'Master', description: 'KT 탑라이너', cost: 15 },
+        { name: 'Cuzz', roles: ['Jungle'], tier: 'Master', description: 'KT 정글러', cost: 20 },
+        { name: 'Smash', roles: ['ADC'], tier: 'Master', description: 'KT 원딜', cost: 15 },
+        { name: 'Beryl', roles: ['Support'], tier: 'Master', description: 'KT 서포터', cost: 20 }
+      ]
+    ];
+
+    // 각 팀에 로스터 직접 할당
+    state.teams.forEach((team, teamIndex) => {
+      team.roster = teamRosters[teamIndex] || [];
+
+      // 예산 계산 (총 125포인트에서 사용한 만큼 차감)
+      const totalCost = team.roster.reduce((sum, player) => sum + player.cost, 0);
+      team.budgetLeft = 125 - totalCost;
+    });
+    AppState.hydrateTeamLeaderInfo();
+
+    // 경매 완료 상태로 설정
+    state.round = 4; // 경매 완료
+    state.currentIndex = -1;
+    state.queue = []; // 모든 선수가 배정되었으므로 큐 비우기
+  }
+
+  function createAndApplySampleData() {
+    // 2025시즌 프로팀 4팀 데이터
+    const sampleTeamNames = ['Gen.G', '한화생명', 'T1', 'KT'];
+    const samplePlayers = [
+      // Gen.G 선수들
+      { name: 'Kiin', roles: ['Top'], tier: 'Challenger', description: 'Gen.G 탑라이너' },
+      { name: 'Canyon', roles: ['Jungle'], tier: 'Challenger', description: 'Gen.G 정글러' },
+      { name: 'Chovy', roles: ['Mid'], tier: 'Challenger', description: 'Gen.G 미드라이너', isLeader: true },
+      { name: 'Ruler', roles: ['ADC'], tier: 'Master', description: 'Gen.G 원딜' },
+      { name: 'Duro', roles: ['Support'], tier: 'Master', description: 'Gen.G 서포터' },
+
+      // 한화생명 선수들
+      { name: 'Zeus', roles: ['Top'], tier: 'Challenger', description: '한화생명 탑라이너' },
+      { name: 'Peanut', roles: ['Jungle'], tier: 'Grandmaster', description: '한화생명 정글러' },
+      { name: 'Zeka', roles: ['Mid'], tier: 'Grandmaster', description: '한화생명 미드라이너', isLeader: true },
+      { name: 'Viper', roles: ['ADC'], tier: 'Challenger', description: '한화생명 원딜' },
+      { name: 'Delight', roles: ['Support'], tier: 'Master', description: '한화생명 서포터' },
+
+      // T1 선수들
+      { name: 'Doran', roles: ['Top'], tier: 'Grandmaster', description: 'T1 탑라이너' },
+      { name: 'Oner', roles: ['Jungle'], tier: 'Grandmaster', description: 'T1 정글러' },
+      { name: 'Faker', roles: ['Mid'], tier: 'Challenger', description: '전설의 미드라이너', isLeader: true },
+      { name: 'Gumayusi', roles: ['ADC'], tier: 'Master', description: 'T1 원딜' },
+      { name: 'Keria', roles: ['Support'], tier: 'Master', description: 'T1 서포터' },
+
+      // KT 선수들
+      { name: 'Perfect', roles: ['Top'], tier: 'Master', description: 'KT 탑라이너' },
+      { name: 'Cuzz', roles: ['Jungle'], tier: 'Master', description: 'KT 정글러' },
+      { name: 'Bdd', roles: ['Mid'], tier: 'Master', description: 'KT 미드라이너', isLeader: true },
+      { name: 'Duckdam', roles: ['ADC'], tier: 'Master', description: 'KT 원딜' },
+      { name: 'Peter', roles: ['Support'], tier: 'Master', description: 'KT 서포터' }
+    ];
+
+    // 전체 인원 설정 (20명)
+    document.getElementById('totalPlayers').value = 20;
+    buildPlayerCardsUI();
+
+    // 팀명 설정
+    els.teamNames.innerHTML = '';
+    sampleTeamNames.forEach((name, i) => {
+      const div = document.createElement('div');
+      div.className = 'team-input';
+      div.innerHTML = `<input type="text" placeholder="팀 ${i + 1}" value="${name}" />`;
+      els.teamNames.appendChild(div);
+    });
+
+    // 선수 카드 설정
+    const playerCardElements = document.querySelectorAll('.player-card');
+    samplePlayers.forEach((player, i) => {
+      if (playerCardElements[i]) {
+        const card = playerCardElements[i];
+        const nameInput = card.querySelector('.pc-input-name');
+        const tierSelect = card.querySelector('.tier-select');
+        const descInput = card.querySelector('.pc-desc');
+        const leaderCheckbox = card.querySelector('.pc-input-leader');
+
+        if (nameInput) nameInput.value = player.name;
+        if (tierSelect) tierSelect.value = player.tier;
+        if (descInput) descInput.value = player.description;
+        if (leaderCheckbox) leaderCheckbox.checked = player.isLeader || false;
+
+        // 기존 역할 체크박스 초기화
+        card.querySelectorAll('.role-chip').forEach(chip => chip.classList.remove('active'));
+        // 기존 티어 체크박스 초기화
+        card.querySelectorAll('.tier-chip').forEach(chip => chip.classList.remove('active'));
+
+        // 역할 체크박스 설정
+        player.roles.forEach(role => {
+          const roleChip = card.querySelector(`[data-role="${role}"]`);
+          if (roleChip) roleChip.classList.add('active');
+        });
+
+        // 티어 체크박스 설정
+        if (player.tier) {
+          const tierChip = card.querySelector(`[data-tier="${player.tier}"]`);
+          if (tierChip) tierChip.classList.add('active');
+        }
+      }
+    });
+  }
+
+  function debugCreateSampleData() {
+    createAndApplySampleData();
+    alert('샘플 데이터가 생성되었습니다!');
   }
 
   // ===== EXPORT FUNCTIONS =====
